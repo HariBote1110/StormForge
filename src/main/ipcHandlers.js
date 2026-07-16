@@ -127,6 +127,14 @@ function registerIpcHandlers(translations) {
     return addModFromPath(filePaths[0]);
   });
 
+  ipcMain.handle('add-mod-from-path', async (event, filePath) => {
+    const ext = path.extname(filePath || '').toLowerCase();
+    if (ext !== '.slp' && ext !== '.zip') {
+      return { success: false, message: 'Unsupported file type.' };
+    }
+    return addModFromPath(filePath);
+  });
+
   ipcMain.handle('delete-mod', async (event, modName) => {
     if (!modName) return { success: false, message: 'Invalid mod name provided.' };
   

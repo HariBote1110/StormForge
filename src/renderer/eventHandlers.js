@@ -331,6 +331,76 @@ export function setupEventListeners(translations) {
         }
     });
 
+    // ドラッグ&ドロップによるMOD追加
+    const dropOverlay = document.getElementById('drop-overlay');
+    const dropOverlayMessage = document.getElementById('drop-overlay-message');
+    dropOverlayMessage.textContent = translations.DROP_TO_ADD || 'Drop here to add mods';
+
+    // dragleaveは子要素間の移動でも発火するためカウンタで管理する
+    let dragCounter = 0;
+
+    const hideDropOverlay = () => {
+        dragCounter = 0;
+        dropOverlay.classList.remove('drop-overlay-active');
+    };
+
+    window.addEventListener('dragenter', (event) => {
+        event.preventDefault();
+        dragCounter++;
+        dropOverlay.classList.add('drop-overlay-active');
+    });
+
+    window.addEventListener('dragover', (event) => {
+        // デフォルト動作(ファイルへのナビゲーション)を抑止
+        event.preventDefault();
+    });
+
+    window.addEventListener('dragleave', (event) => {
+        event.preventDefault();
+        dragCounter--;
+        if (dragCounter <= 0) {
+            hideDropOverlay();
+        }
+    });
+
+    window.addEventListener('drop', async (event) => {
+        event.preventDefault();
+        hideDropOverlay();
+
+        const files = Array.from(event.dataTransfer?.files || []);
+        if (files.length === 0) return;
+
+        const modPaths = files
+            .map(file => window.electronAPI.getPathForFile(file))
+            .filter(filePath => /\.(slp|zip)$/i.test(filePath));
+
+        if (modPaths.length === 0) {
+            showToast('Unsupported file type.', 'error');
+            return;
+        }
+
+        elements.loadingMessage.textContent = translations.PROCESSING || "Processing...";
+        elements.loadingOverlay.style.display = 'flex';
+        try {
+            for (const modPath of modPaths) {
+                const result = await window.electronAPI.addModFromPath(modPath);
+                if (result.success) {
+                    const existingLi = document.querySelector(`li[data-mod-name="${result.mod.name}"]`);
+                    if (existingLi) {
+                        elements.modList.removeChild(existingLi);
+                    }
+                    addModToList(result.mod, translations);
+                    updatePendingState(true);
+                    showToast(result.mod.name, 'success');
+                } else {
+                    showToast(`${translations.ERROR}: ${result.message}`, 'error');
+                }
+            }
+        } finally {
+            elements.loadingOverlay.style.display = 'none';
+        }
+    });
+
     window.electronAPI.onShowLoading((message) => {
         elements.loadingMessage.textContent = message;
         elements.loadingOverlay.style.display = 'flex';

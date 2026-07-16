@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   getPlatform: () => process.platform,
@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   autoDetectPath: () => ipcRenderer.invoke('auto-detect-path'),
   launchGame: () => ipcRenderer.invoke('launch-game'),
   addMod: () => ipcRenderer.invoke('add-mod'),
+  addModFromPath: (filePath) => ipcRenderer.invoke('add-mod-from-path', filePath),
+  // File.path is unavailable in sandboxed renderers; webUtils is the supported API
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   deleteMod: (modName) => ipcRenderer.invoke('delete-mod', modName),
   backupRom: () => ipcRenderer.invoke('backup-rom'),
   savePlaylist: (name, activeStates) => ipcRenderer.invoke('save-playlist', name, activeStates),
