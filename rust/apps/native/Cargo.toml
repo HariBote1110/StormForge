@@ -1,0 +1,13 @@
+[package]
+name = "stormforge-native"
+version = "0.1.0"
+edition = "2021"
+description = "Slint-based native GUI MVP for StormForge."
+
+[dependencies]
+stormforge-core = { path = "../../crates/stormforge-core" }
+slint = "1"
+rfd = "0.15"
+
+[build-dependencies]
+slint-build = "1"
