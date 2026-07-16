@@ -1,11 +1,9 @@
 const { app, ipcMain, dialog, shell, BrowserWindow, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
-const AdmZip = require('adm-zip');
-const { parseStringPromise } = require('xml2js');
 const pako = require('pako');
 const { readStore, writeStore } = require('./store');
-const { rebuildRomFromActiveMods, backupRom, getRomPath } = require('./modService');
+const { rebuildRomFromActiveMods, backupRom, getRomPath, addModFromPath } = require('./modService');
 const { detectGamePath } = require('./steamUtils');
 
 function registerIpcHandlers(translations) {
@@ -125,41 +123,8 @@ function registerIpcHandlers(translations) {
   ipcMain.handle('add-mod', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({ title: 'Select .slp file', filters: [{ name: 'StormLoader Package', extensions: ['slp', 'zip'] }], properties: ['openFile'] });
     if (canceled || filePaths.length === 0) return { success: false, message: 'File selection was canceled.' };
-    
-    const filePath = filePaths[0];
-    const modName = path.basename(filePath, path.extname(filePath));
-    const modsDir = path.join(app.getPath('userData'), 'mods');
-    const extractPath = path.join(modsDir, modName);
-    try {
-      const tempExtractPath = path.join(modsDir, `__temp_${modName}`);
-      await fs.ensureDir(tempExtractPath);
-      const zip = new AdmZip(filePath);
-      zip.extractAllTo(tempExtractPath, true);
-      const files = await fs.readdir(tempExtractPath);
-      let modRootPath = tempExtractPath;
-      if (files.length === 1 && (await fs.stat(path.join(tempExtractPath, files[0]))).isDirectory()) { modRootPath = path.join(tempExtractPath, files[0]); }
-      await fs.ensureDir(extractPath);
-      await fs.copy(modRootPath, extractPath);
-      await fs.remove(tempExtractPath);
-      const metadataPath = path.join(extractPath, 'Metadata.xml');
-      let author = 'Unknown', version = 'Unknown';
-      if (await fs.pathExists(metadataPath)) {
-        const xmlData = await fs.readFile(metadataPath, 'utf8');
-        const parsedData = await parseStringPromise(xmlData);
-        author = parsedData.Metadata.Author[0];
-        version = parsedData.Metadata.Version[0];
-      }
-      const modInfo = { name: modName, path: extractPath, author: author, version: version, active: false };
-      const store = readStore();
-      if (!store.mods) store.mods = [];
-      const existingIndex = store.mods.findIndex(m => m.name === modName);
-      if (existingIndex > -1) { store.mods[existingIndex] = modInfo; } else { store.mods.push(modInfo); }
-      writeStore(store);
-      return { success: true, mod: modInfo };
-    } catch (error) {
-      console.error(`Failed to process mod: ${error}`);
-      return { success: false, message: `Failed to process: ${error.message}` };
-    }
+
+    return addModFromPath(filePaths[0]);
   });
 
   ipcMain.handle('delete-mod', async (event, modName) => {

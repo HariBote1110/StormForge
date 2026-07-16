@@ -1,6 +1,8 @@
 const { app, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs-extra');
+const AdmZip = require('adm-zip');
+const { parseStringPromise } = require('xml2js');
 const { readStore, writeStore } = require('./store');
 
 const vanillaRomBackupPath = path.join(app.getPath('userData'), 'vanilla_rom_backup');
@@ -201,4 +203,52 @@ async function backupRom(mainWindow, translations) {
     }
 }
 
-module.exports = { installMod, rebuildRomFromActiveMods, backupRom, getRomPath };
+/**
+ * Extracts a .slp/.zip mod archive from the given file path, parses its
+ * metadata, and registers it in the store. This is the core logic shared
+ * between the dialog-driven "add-mod" IPC handler and future drag & drop
+ * support.
+ *
+ * @param {string} filePath Absolute path to the .slp/.zip archive to install.
+ * @returns {Promise<{success: boolean, mod?: object, message?: string}>}
+ */
+async function addModFromPath(filePath) {
+    const modName = path.basename(filePath, path.extname(filePath));
+    const modsDir = path.join(app.getPath('userData'), 'mods');
+    const extractPath = path.join(modsDir, modName);
+    try {
+        const tempExtractPath = path.join(modsDir, `__temp_${modName}`);
+        await fs.ensureDir(tempExtractPath);
+        const zip = new AdmZip(filePath);
+        // ★ 修正: 同期版のextractAllToはメインプロセスをブロックしIPC全体を止めてしまうため、非同期版を使用
+        await new Promise((resolve, reject) => {
+            zip.extractAllToAsync(tempExtractPath, true, false, (err) => err ? reject(err) : resolve());
+        });
+        const files = await fs.readdir(tempExtractPath);
+        let modRootPath = tempExtractPath;
+        if (files.length === 1 && (await fs.stat(path.join(tempExtractPath, files[0]))).isDirectory()) { modRootPath = path.join(tempExtractPath, files[0]); }
+        await fs.ensureDir(extractPath);
+        await fs.copy(modRootPath, extractPath);
+        await fs.remove(tempExtractPath);
+        const metadataPath = path.join(extractPath, 'Metadata.xml');
+        let author = 'Unknown', version = 'Unknown';
+        if (await fs.pathExists(metadataPath)) {
+            const xmlData = await fs.readFile(metadataPath, 'utf8');
+            const parsedData = await parseStringPromise(xmlData);
+            author = parsedData.Metadata.Author[0];
+            version = parsedData.Metadata.Version[0];
+        }
+        const modInfo = { name: modName, path: extractPath, author: author, version: version, active: false };
+        const store = readStore();
+        if (!store.mods) store.mods = [];
+        const existingIndex = store.mods.findIndex(m => m.name === modName);
+        if (existingIndex > -1) { store.mods[existingIndex] = modInfo; } else { store.mods.push(modInfo); }
+        writeStore(store);
+        return { success: true, mod: modInfo };
+    } catch (error) {
+        console.error(`Failed to process mod: ${error}`);
+        return { success: false, message: `Failed to process: ${error.message}` };
+    }
+}
+
+module.exports = { installMod, rebuildRomFromActiveMods, backupRom, getRomPath, addModFromPath };
