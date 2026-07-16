@@ -74,7 +74,11 @@ export component MainWindow inherits Window {
             Text { text: root.l-mods; font-weight: 700; }
             ListView {
                 for item[i] in mods: HorizontalBox {
-                    height: 34px;
+                    // No fixed height: a tight 34px cap left the buttons under their
+                    // minimum size, clipping glyph descenders (noticeable with
+                    // Japanese labels). Let the row size to its content instead.
+                    padding-top: 2px;
+                    padding-bottom: 2px;
                     CheckBox {
                         checked: item.active;
                         enabled: !busy;
@@ -116,7 +120,10 @@ export component MainWindow inherits Window {
                     ListView {
                         min-height: 150px;
                         for item in playlists: HorizontalBox {
-                            height: 34px;
+                            // As with the mod rows: no fixed height, so buttons keep
+                            // their minimum height and labels are never clipped.
+                            padding-top: 2px;
+                            padding-bottom: 2px;
                             Text { text: item.name; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
                             if item.loaded: Rectangle {
                                 background: #2c7a3f;
