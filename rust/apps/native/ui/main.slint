@@ -1,0 +1,65 @@
+import { Button, CheckBox, ListView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export struct ModItem {
+    name: string,
+    author: string,
+    version: string,
+    active: bool,
+}
+
+export component MainWindow inherits Window {
+    title: "StormForge (native)";
+    width: 720px;
+    height: 480px;
+
+    in property <[ModItem]> mods;
+    in property <[string]> playlists;
+    in property <string> status-text: "";
+    in property <bool> busy: false;
+
+    callback toggle-mod(int, bool);
+    callback apply-changes();
+    callback add-mod();
+
+    HorizontalBox {
+        // Left panel: mod list.
+        VerticalBox {
+            width: 60%;
+            Text { text: "Mods"; font-weight: 700; }
+            ListView {
+                for item[i] in mods: HorizontalBox {
+                    height: 32px;
+                    CheckBox {
+                        checked: item.active;
+                        toggled => { toggle-mod(i, self.checked); }
+                    }
+                    Text { text: item.name; width: 40%; }
+                    Text { text: item.author; width: 30%; }
+                    Text { text: item.version; width: 20%; }
+                }
+            }
+            HorizontalBox {
+                Button {
+                    text: "Add Mod";
+                    enabled: !busy;
+                    clicked => { add-mod(); }
+                }
+                Button {
+                    text: busy ? "Applying..." : "Apply Changes";
+                    enabled: !busy;
+                    clicked => { apply-changes(); }
+                }
+            }
+            Text { text: status-text; }
+        }
+
+        // Right panel: playlist stub.
+        VerticalBox {
+            width: 40%;
+            Text { text: "Playlists"; font-weight: 700; }
+            ListView {
+                for name in playlists: Text { text: name; height: 24px; }
+            }
+        }
+    }
+}
