@@ -44,6 +44,25 @@ Electron ──→ ①Tauri v2 (UI流用・ロジックRust化) ──→ ②Sli
 
 ①だけで止まっても配布サイズ・メモリは大幅改善する。②まで行くとWebView依存（Win側のWebView2ランタイム含む）が完全に消え、ランタイム不要の単一バイナリになる。UIとロジックの同時書き直しはリスクが高いため、一気に②へ飛ばずTauriを中間ステップにするのを推奨。
 
+## 決定 (2026-07-16): WebStack版とRust Native版の2本立てリリース
+
+ユーザー決定により、最終的に **Tauri版（WebStack）と Slint等のRustネイティブ版の両方をリリース**する方針。維持可能にするための必須条件はコアロジックの共有:
+
+```
+stormforge/ (Cargo workspace)
+├── crates/stormforge-core/   # 共有ロジック: store, mod install, ZIP, XML, Steam検出, 共有文字列
+├── apps/tauri/               # WebStack版 (既存HTML/JS UIを流用)
+└── apps/native/              # Rustネイティブ版 (Slint)
+```
+
+UI層は薄く保ち、機能追加は必ずcoreに入れて両フロントから呼ぶ。
+
+## macOS署名について
+
+- 本プロジェクトは `identity: null`（ad-hoc署名）で配布中。公証には Apple Developer Program ($99/年) が必要で、小規模OSSでは未加入が多数派
+- macOS 15 (Sequoia) 以降「右クリック→開く」が塞がれ、システム設定の「このまま開く」または `xattr -d com.apple.quarantine` が必要
+- 現実解: ①READMEに回避手順明記（現状維持）→ ②Homebrew Cask登録（無料・UX改善、優先度高）→ ③ユーザーが増えたら公証を検討
+
 ## 推奨する進め方
 1. 現行Electron版の改善（フリーズ解消・D&D・プレイリストUX）を先に完了
 2. `tauri init` で別ブランチに骨組みを作り、レンダラを流用して1コマンド（add-mod）だけRust実装するスパイクで感触を確認
