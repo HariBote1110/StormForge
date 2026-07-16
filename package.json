@@ -33,8 +33,7 @@
       "!progress/**",
       "!dist/**",
       "!development.md",
-      "!.claude/**",
-      "!node_modules/**"
+      "!.claude/**"
     ],
     "mac": {
       "identity": null,
