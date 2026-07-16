@@ -58,6 +58,44 @@ pub fn stormworks_path_from_library(library_path: &str) -> PathBuf {
     }
 }
 
+/// The Steam installation directory for the current platform, if it exists. Mirrors
+/// `getSteamPath()` in the JS: registry query (approximated here by the default install
+/// path) on Windows, `~/Library/Application Support/Steam` on macOS, none elsewhere.
+fn get_steam_path() -> Option<PathBuf> {
+    let candidate = if cfg!(target_os = "windows") {
+        PathBuf::from("C:\\Program Files (x86)\\Steam")
+    } else if cfg!(target_os = "macos") {
+        dirs::home_dir()?.join("Library").join("Application Support").join("Steam")
+    } else {
+        return None;
+    };
+    candidate.is_dir().then_some(candidate)
+}
+
+/// Detect the Stormworks installation by inspecting Steam's `libraryfolders.vdf`,
+/// falling back to the default library when the VDF is absent or has no match. Returns
+/// the game directory in the shape the store expects (the `.app` bundle on macOS).
+/// Ported from `detectGamePath()` in `src/main/steamUtils.js`.
+pub fn detect_game_path() -> Option<PathBuf> {
+    let steam_path = get_steam_path()?;
+    let vdf_path = steam_path.join("steamapps").join("libraryfolders.vdf");
+
+    if let Ok(vdf_contents) = std::fs::read_to_string(&vdf_path) {
+        for library in extract_library_paths_for_app(&vdf_contents, STORMWORKS_APP_ID) {
+            // VDF escapes backslashes on Windows; undo that before path building.
+            let library = library.replace("\\\\", "\\");
+            let candidate = stormworks_path_from_library(&library);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+    }
+
+    // Fall back to the default library inside the Steam directory itself.
+    let default_candidate = stormworks_path_from_library(&steam_path.to_string_lossy());
+    default_candidate.exists().then_some(default_candidate)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
