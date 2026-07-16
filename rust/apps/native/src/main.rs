@@ -13,7 +13,9 @@ use std::thread;
 
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
-use stormforge_core::mods::{add_mod_from_path, default_vanilla_backup_dir, rebuild_rom_from_active_mods};
+use stormforge_core::apply::{differential_apply, ApplyStats};
+use stormforge_core::manifest::default_manifest_path;
+use stormforge_core::mods::{add_mod_from_path, default_vanilla_backup_dir};
 use stormforge_core::rom::get_rom_path;
 use stormforge_core::store::{electron_store_path, read_store, write_store, Store};
 
@@ -21,7 +23,33 @@ slint::include_modules!();
 
 /// Messages sent from the "Apply Changes" worker thread back to the UI thread.
 enum WorkerMessage {
-    Done(Result<(), String>),
+    Done(Result<(ApplyStats, std::time::Duration), String>),
+}
+
+/// Format apply statistics for the status line, with thousands separators for the
+/// unchanged count (which can be ~15,000 on a real rom).
+fn format_stats(stats: &ApplyStats, elapsed: std::time::Duration) -> String {
+    fn thousands(n: usize) -> String {
+        let digits = n.to_string();
+        let mut out = String::new();
+        for (i, c) in digits.chars().enumerate() {
+            if i > 0 && (digits.len() - i) % 3 == 0 {
+                out.push(',');
+            }
+            out.push(c);
+        }
+        out
+    }
+    let mode = if stats.full_rebuild { " (full rebuild)" } else { "" };
+    format!(
+        "Applied{}: restored {}, copied {}, removed {}, unchanged {} in {:.2}s",
+        mode,
+        thousands(stats.restored),
+        thousands(stats.copied),
+        thousands(stats.removed),
+        thousands(stats.unchanged),
+        elapsed.as_secs_f64(),
+    )
 }
 
 fn mods_to_model(store: &Store) -> ModelRc<ModItem> {
@@ -133,22 +161,22 @@ fn main() {
             let (tx, rx) = mpsc::channel::<WorkerMessage>();
 
             thread::spawn(move || {
-                let result = (|| -> Result<(), String> {
+                let started = std::time::Instant::now();
+                let result = (|| -> Result<(ApplyStats, std::time::Duration), String> {
                     let store = read_store(&store_path_for_thread);
                     let game_directory =
                         store.game_directory.clone().ok_or_else(|| "Game directory is not set.".to_string())?;
                     let rom_path = get_rom_path(&game_directory);
                     let backup_path = default_vanilla_backup_dir()
                         .ok_or_else(|| "Could not resolve backup directory.".to_string())?;
+                    let manifest_path = default_manifest_path()
+                        .ok_or_else(|| "Could not resolve manifest path.".to_string())?;
 
                     let active_mods: Vec<_> = store.mods.iter().filter(|m| m.active).cloned().collect();
-                    let installed = rebuild_rom_from_active_mods(&rom_path, &backup_path, &active_mods)
+                    let stats = differential_apply(&rom_path, &backup_path, &active_mods, &manifest_path)
                         .map_err(|e| e.to_string())?;
 
-                    let mut store = read_store(&store_path_for_thread);
-                    store.installed_files = installed;
-                    write_store(&store_path_for_thread, &store).map_err(|e| e.to_string())?;
-                    Ok(())
+                    Ok((stats, started.elapsed()))
                 })();
 
                 let _ = tx.send(WorkerMessage::Done(result));
@@ -168,10 +196,10 @@ fn main() {
                         if let Some(window) = window_weak_for_timer.upgrade() {
                             window.set_busy(false);
                             match result {
-                                Ok(()) => {
+                                Ok((stats, elapsed)) => {
                                     let store = read_store(&store_path_for_timer);
                                     window.set_mods(mods_to_model(&store));
-                                    window.set_status_text(SharedString::from("Changes applied successfully."));
+                                    window.set_status_text(SharedString::from(format_stats(&stats, elapsed)));
                                 }
                                 Err(err) => {
                                     window.set_status_text(SharedString::from(format!("Failed: {err}")));

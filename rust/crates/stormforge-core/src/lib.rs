@@ -3,6 +3,9 @@
 //! and Steam library detection. Ported from the Electron app's `src/main/*.js` files so
 //! it can be shared by multiple native frontends (Slint now, Tauri later).
 
+pub mod apply;
+pub mod fsops;
+pub mod manifest;
 pub mod metadata;
 pub mod mods;
 pub mod rom;

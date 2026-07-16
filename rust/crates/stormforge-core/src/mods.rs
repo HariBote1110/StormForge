@@ -38,27 +38,9 @@ pub fn default_vanilla_backup_dir() -> Option<PathBuf> {
     Some(data_dir.join("StormForge").join("vanilla_rom_backup"))
 }
 
-/// Recursively copy the contents of `src` into `dst`, creating `dst` (and
-/// subdirectories) as needed. Overwrites existing files, matching the semantics of
-/// `fs-extra`'s `fs.copy(src, dst, { overwrite: true })`.
-pub fn copy_dir_recursive(src: &Path, dst: &Path) -> io::Result<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-
-        if file_type.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
-        } else if file_type.is_file() {
-            fs::copy(&src_path, &dst_path)?;
-        }
-        // Symlinks are intentionally not followed/recreated; mod packages and the
-        // vanilla rom backup are not expected to contain them.
-    }
-    Ok(())
-}
+// All directory copies go through `fsops::clone_dir_recursive`, which prefers
+// filesystem clones (clonefile on APFS) over byte copies.
+use crate::fsops::clone_dir_recursive as copy_dir_recursive;
 
 /// Extract a `.slp`/`.zip` mod package into `mods_dir/<mod_name>`, reading its
 /// `Metadata.xml` for author/version. Mirrors the `add-mod` IPC handler.
