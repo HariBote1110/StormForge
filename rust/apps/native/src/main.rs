@@ -198,6 +198,23 @@ fn main() {
     refresh(&window, &store_path);
     window.set_busy(false);
 
+    // Guide the user up front instead of letting each operation fail with the same
+    // root cause: no game directory, or a directory whose rom cannot be found.
+    match &initial_store.game_directory {
+        None => window.set_status_text(SharedString::from(
+            "Game directory is not set — use Auto Detect in Settings, or set it in the Electron app.",
+        )),
+        Some(dir) => {
+            let rom = get_rom_path(dir);
+            if !rom.is_dir() {
+                window.set_status_text(SharedString::from(format!(
+                    "ROM directory not found at {} — check the game directory setting.",
+                    rom.display()
+                )));
+            }
+        }
+    }
+
     // --- mod list -------------------------------------------------------------
     {
         let store_path = store_path.clone();
