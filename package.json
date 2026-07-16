@@ -28,7 +28,11 @@
     },
     "files": [
       "**/*",
-      "!build/icon.*"
+      "!build/icon.*",
+      "!rust/**",
+      "!progress/**",
+      "!dist/**",
+      "!development.md"
     ],
     "mac": {
       "identity": null,
