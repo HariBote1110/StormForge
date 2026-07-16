@@ -32,7 +32,9 @@
       "!rust/**",
       "!progress/**",
       "!dist/**",
-      "!development.md"
+      "!development.md",
+      "!.claude/**",
+      "!node_modules/**"
     ],
     "mac": {
       "identity": null,
