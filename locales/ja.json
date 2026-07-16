@@ -1,6 +1,11 @@
 {
   "APP_TITLE": "StormForge",
   "SETTINGS": "設定",
+  "SETTINGS_MENU": "設定メニュー",
+  "LANGUAGE": "言語",
+  "FAST_COPY": "高速コピー (推奨)",
+  "FAST_COPY_DESC": "変更のあるフォルダのみを更新し、処理を高速化します。問題が発生した場合は無効にしてください。",
+  "SAVE": "保存",
   "SET_GAME_DIR": "Stormworks.app を選択",
   "SET_GAME_DIR_WIN": "インストールフォルダを選択",
   "AUTO_DETECT": "自動検出",

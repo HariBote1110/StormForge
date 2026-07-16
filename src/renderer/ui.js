@@ -3,8 +3,8 @@ export const elements = {
     settingsBtn: document.getElementById('settings-btn'),
     addModBtn: document.getElementById('add-mod-btn'),
     setGameDirBtn: document.getElementById('set-game-dir-btn'),
-    autoDetectBtn: document.getElementById('auto-detect-btn'), // ★ 追加
-    launchGameBtn: document.getElementById('launch-game-btn'), // ★ 追加
+    autoDetectBtn: document.getElementById('auto-detect-btn'),
+    launchGameBtn: document.getElementById('launch-game-btn'),
     backupRomBtn: document.getElementById('backup-rom-btn'),
     gameDirContainer: document.getElementById('game-dir-container'),
     gameDirDisplay: document.getElementById('game-dir-display'),
@@ -23,7 +23,14 @@ export const elements = {
     shareConfigBtn: document.getElementById('share-config-btn'),
     importFromTextBtn: document.getElementById('import-from-text-btn'),
 
-    // Modals
+    // Settings Modal
+    settingsModal: document.getElementById('settings-modal'),
+    settingsLanguageSelect: document.getElementById('settings-language-select'),
+    settingsFastCopyCheck: document.getElementById('settings-fast-copy-check'),
+    saveSettingsBtn: document.getElementById('save-settings-btn'),
+    closeSettingsModalBtn: document.getElementById('close-settings-modal-btn'),
+
+    // Other Modals
     exportModal: document.getElementById('export-modal'),
     exportTextarea: document.getElementById('export-textarea'),
     copyConfigBtn: document.getElementById('copy-config-btn'),

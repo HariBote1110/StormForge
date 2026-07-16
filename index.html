@@ -75,6 +75,34 @@
         </div>
     </div>
 
+    <div id="settings-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h3 data-lang="SETTINGS_MENU">Settings Menu</h3>
+            
+            <div style="margin-bottom: 20px;">
+                <label data-lang="LANGUAGE" style="display: block; margin-bottom: 5px;">Language</label>
+                <select id="settings-language-select" style="width: 100%;">
+                    <option value="ja">日本語</option>
+                    <option value="en">English</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <label class="switch">
+                    <input type="checkbox" id="settings-fast-copy-check">
+                    <span class="slider"></span>
+                </label>
+                <span data-lang="FAST_COPY" style="margin-left: 10px; font-weight: bold;">Fast Copy (Recommended)</span>
+                <p data-lang="FAST_COPY_DESC" style="font-size: 12px; color: #828a99; margin-top: 5px;">Updates only changed folders to speed up the process. Disable if issues occur.</p>
+            </div>
+
+            <div class="modal-actions">
+                <button id="save-settings-btn" class="primary" data-lang="SAVE">Save</button>
+                <button id="close-settings-modal-btn" data-lang="CLOSE">Close</button>
+            </div>
+        </div>
+    </div>
+
     <div id="export-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content">
             <h3 data-lang="SHARE_CONFIG_TITLE">Share Playlist</h3>

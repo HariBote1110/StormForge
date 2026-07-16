@@ -4,10 +4,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPlatform: () => process.platform,
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   getInitialData: () => ipcRenderer.invoke('get-initial-data'),
-  switchLanguage: (locale) => ipcRenderer.invoke('switch-language', locale),
+  updateSettings: (newSettings) => ipcRenderer.invoke('update-settings', newSettings), // ★ 変更: switchLanguage の代わりに汎用設定更新を使用
   setGameDirectory: () => ipcRenderer.invoke('set-game-directory'),
-  autoDetectPath: () => ipcRenderer.invoke('auto-detect-path'), // ★ 追加
-  launchGame: () => ipcRenderer.invoke('launch-game'), // ★ 追加
+  autoDetectPath: () => ipcRenderer.invoke('auto-detect-path'),
+  launchGame: () => ipcRenderer.invoke('launch-game'),
   addMod: () => ipcRenderer.invoke('add-mod'),
   deleteMod: (modName) => ipcRenderer.invoke('delete-mod', modName),
   backupRom: () => ipcRenderer.invoke('backup-rom'),

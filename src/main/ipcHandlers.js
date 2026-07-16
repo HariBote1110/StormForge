@@ -6,7 +6,7 @@ const { parseStringPromise } = require('xml2js');
 const pako = require('pako');
 const { readStore, writeStore } = require('./store');
 const { rebuildRomFromActiveMods, backupRom, getRomPath } = require('./modService');
-const { detectGamePath } = require('./steamUtils'); // ★ 新規追加
+const { detectGamePath } = require('./steamUtils');
 
 function registerIpcHandlers(translations) {
   ipcMain.handle('get-app-version', () => app.getVersion());
@@ -19,15 +19,34 @@ function registerIpcHandlers(translations) {
     return { store, translations };
   });
 
+  // ★ 設定更新ハンドラを追加
+  ipcMain.handle('update-settings', async (event, newSettings) => {
+    const store = readStore();
+    if (!store.settings) store.settings = {};
+    
+    const oldLanguage = store.settings.language;
+    
+    // 設定をマージ
+    store.settings = { ...store.settings, ...newSettings };
+    writeStore(store);
+
+    // 言語が変更された場合のみ再起動
+    if (newSettings.language && newSettings.language !== oldLanguage) {
+        app.relaunch();
+        app.quit();
+        return { success: true, restarting: true };
+    }
+    
+    return { success: true, restarting: false };
+  });
+
   ipcMain.handle('backup-rom', (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     return backupRom(window, translations);
   });
 
-  // ★ ゲーム起動ハンドラを追加
   ipcMain.handle('launch-game', async () => {
     try {
-        // Steamプロトコルを使用して起動 (クロスプラットフォームで最も確実)
         await shell.openExternal('steam://run/573090');
         return { success: true };
     } catch (error) {
@@ -36,7 +55,6 @@ function registerIpcHandlers(translations) {
     }
   });
 
-  // ★ 自動検出ハンドラを追加
   ipcMain.handle('auto-detect-path', async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     try {
@@ -49,7 +67,6 @@ function registerIpcHandlers(translations) {
             
             const romPath = getRomPath(detectedPath);
             if (await fs.pathExists(romPath)) {
-                 // 自動でバックアップも試みる
                  await backupRom(window, translations);
                  return { success: true, path: detectedPath, romPath: romPath };
             }
@@ -77,7 +94,7 @@ function registerIpcHandlers(translations) {
           return { success: false };
       }
       romPath = path.join(appPath, 'Contents', 'Resources', 'rom');
-    } else { // Windows or other platforms
+    } else { 
       const { canceled, filePaths } = await dialog.showOpenDialog({
         title: translations.SELECT_GAME_FOLDER,
         properties: ['openDirectory']
@@ -102,14 +119,8 @@ function registerIpcHandlers(translations) {
     return { success: true, path: romPath };
   });
 
-  ipcMain.handle('switch-language', (event, locale) => {
-    const store = readStore();
-    if (!store.settings) store.settings = {};
-    store.settings.language = locale;
-    writeStore(store);
-    app.relaunch();
-    app.quit();
-  });
+  // switch-language は update-settings に統合されましたが、古い呼び出しとの互換性のために残すか、削除してもOK。
+  // ここではpreload.jsも更新するため削除します。
 
   ipcMain.handle('add-mod', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({ title: 'Select .slp file', filters: [{ name: 'StormLoader Package', extensions: ['slp', 'zip'] }], properties: ['openFile'] });

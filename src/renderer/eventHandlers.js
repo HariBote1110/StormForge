@@ -1,11 +1,41 @@
 import { elements, refreshModListUI, refreshPlaylistUI, updatePendingState, addModToList } from './ui.js';
 
 export function setupEventListeners(translations) {
+    // ★ 設定ボタンの挙動変更: モーダルを開く
     elements.settingsBtn.addEventListener('click', async () => {
-        if (confirm(translations.SWITCH_LANGUAGE_CONFIRM)) {
-            const currentLocale = (await window.electronAPI.getInitialData()).store.settings?.language || 'ja';
-            const newLocale = currentLocale === 'ja' ? 'en' : 'ja';
-            await window.electronAPI.switchLanguage(newLocale);
+        const { store } = await window.electronAPI.getInitialData();
+        const currentLang = store.settings?.language || 'ja';
+        const fastCopy = store.settings?.fastCopy !== false; // デフォルトtrue
+
+        elements.settingsLanguageSelect.value = currentLang;
+        elements.settingsFastCopyCheck.checked = fastCopy;
+        
+        elements.settingsModal.style.display = 'flex';
+    });
+
+    // ★ 設定モーダル: 閉じるボタン
+    elements.closeSettingsModalBtn.addEventListener('click', () => {
+        elements.settingsModal.style.display = 'none';
+    });
+
+    // ★ 設定モーダル: 保存ボタン
+    elements.saveSettingsBtn.addEventListener('click', async () => {
+        const newSettings = {
+            language: elements.settingsLanguageSelect.value,
+            fastCopy: elements.settingsFastCopyCheck.checked
+        };
+
+        const result = await window.electronAPI.updateSettings(newSettings);
+        
+        if (result.success) {
+            if (result.restarting) {
+                // 再起動中のため何もしない（またはメッセージ表示）
+            } else {
+                elements.settingsModal.style.display = 'none';
+                alert(translations.SUCCESS || "Settings saved.");
+            }
+        } else {
+            alert("Failed to save settings.");
         }
     });
 
@@ -31,9 +61,8 @@ export function setupEventListeners(translations) {
         }
     });
 
-    // ★ 自動検出ボタンのリスナー
     elements.autoDetectBtn.addEventListener('click', async () => {
-        window.electronAPI.onShowLoading(() => {}); // ダミーコールバックでローディング表示をトリガーできればベターだが、直接UI操作でも可
+        window.electronAPI.onShowLoading(() => {}); 
         elements.loadingOverlay.style.display = 'flex';
         elements.loadingMessage.textContent = translations.PROCESSING || "Processing...";
 
@@ -50,7 +79,6 @@ export function setupEventListeners(translations) {
         }
     });
 
-    // ★ ゲーム起動ボタンのリスナー
     elements.launchGameBtn.addEventListener('click', async () => {
         const result = await window.electronAPI.launchGame();
         if (!result.success) {
@@ -211,7 +239,6 @@ export function setupEventListeners(translations) {
         }
     });
 
-    // Share/Import Event Listeners
     elements.shareConfigBtn.addEventListener('click', async () => {
         const activeMods = [];
         const { store } = await window.electronAPI.getInitialData();
@@ -245,7 +272,6 @@ export function setupEventListeners(translations) {
         elements.importModal.style.display = 'flex';
     });
 
-    // Modal close buttons
     elements.closeExportModalBtn.addEventListener('click', () => {
         elements.exportModal.style.display = 'none';
     });
@@ -253,7 +279,6 @@ export function setupEventListeners(translations) {
         elements.importModal.style.display = 'none';
     });
 
-    // Modal actions
     elements.copyConfigBtn.addEventListener('click', () => {
         window.electronAPI.copyToClipboard(elements.exportTextarea.value);
         alert('Copied to clipboard!');
@@ -280,7 +305,6 @@ export function setupEventListeners(translations) {
                 const { store } = await window.electronAPI.getInitialData();
                 refreshPlaylistUI(store.playlists, playlistName);
                 
-                // Apply states to UI
                 document.querySelectorAll('#mod-list li').forEach(li => {
                     const modName = li.dataset.modName;
                     const checkbox = li.querySelector('input[type="checkbox"]');
@@ -301,7 +325,6 @@ export function setupEventListeners(translations) {
         }
     });
 
-    // --- ローディング表示 ---
     window.electronAPI.onShowLoading((message) => {
         elements.loadingMessage.textContent = message;
         elements.loadingOverlay.style.display = 'flex';

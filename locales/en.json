@@ -1,6 +1,11 @@
 {
   "APP_TITLE": "StormForge",
   "SETTINGS": "Settings",
+  "SETTINGS_MENU": "Settings Menu",
+  "LANGUAGE": "Language",
+  "FAST_COPY": "Fast Copy (Recommended)",
+  "FAST_COPY_DESC": "Updates only changed folders to speed up the process. Disable if issues occur.",
+  "SAVE": "Save",
   "SET_GAME_DIR": "Select Stormworks.app",
   "SET_GAME_DIR_WIN": "Select Install Folder",
   "AUTO_DETECT": "Auto Detect",
