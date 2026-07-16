@@ -63,5 +63,8 @@
   "MISSING_MODS_DESC": "このプレイリストをインポートするには、以下のMODをインストールする必要があります:",
   "IMPORT_SUCCESS_TITLE": "インポート成功",
   "IMPORT_SUCCESS_DESC": "プレイリスト '{playlistName}' を作成しました。MODの状態を更新し、「変更を適用」を押してください。",
-  "DROP_TO_ADD": "ここにドロップしてMODを追加"
+  "DROP_TO_ADD": "ここにドロップしてMODを追加",
+  "SAVE_CURRENT_AS": "現在の構成を新規プレイリストとして保存",
+  "LOADED_BADGE": "適用中",
+  "NO_PLAYLISTS": "プレイリストはまだありません"
 }

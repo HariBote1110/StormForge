@@ -11,13 +11,9 @@ export const elements = {
     modList: document.getElementById('mod-list'),
     loadingOverlay: document.getElementById('loading-overlay'),
     loadingMessage: document.getElementById('loading-message'),
-    playlistSelect: document.getElementById('playlist-select'),
-    loadPlaylistBtn: document.getElementById('load-playlist-btn'),
+    playlistList: document.getElementById('playlist-list'),
     savePlaylistBtn: document.getElementById('save-playlist-btn'),
     newPlaylistNameInput: document.getElementById('new-playlist-name'),
-    renamePlaylistBtn: document.getElementById('rename-playlist-btn'),
-    deletePlaylistBtn: document.getElementById('delete-playlist-btn'),
-    overwritePlaylistBtn: document.getElementById('overwrite-playlist-btn'),
     applyChangesBtn: document.getElementById('apply-changes-btn'),
     pendingIndicator: document.getElementById('pending-indicator'),
     shareConfigBtn: document.getElementById('share-config-btn'),
@@ -98,23 +94,68 @@ export function refreshModListUI(mods, translations) {
     }
 }
 
+// refreshPlaylistUI is called without translations from event handlers,
+// so cache the dictionary supplied to initializeUI at module level
+let cachedTranslations = {};
+
 export function refreshPlaylistUI(playlists, selected) {
-    const currentSelection = elements.playlistSelect.value;
-    elements.playlistSelect.innerHTML = '';
-    if (playlists) {
-        Object.keys(playlists).forEach(name => {
-            const option = document.createElement('option');
-            option.value = name;
-            option.textContent = name;
-            elements.playlistSelect.appendChild(option);
-        });
-        
-        if (selected && Object.keys(playlists).includes(selected)) {
-            elements.playlistSelect.value = selected;
-        } else if (currentSelection && Object.keys(playlists).includes(currentSelection)) {
-            elements.playlistSelect.value = currentSelection;
-        }
+    const t = cachedTranslations;
+    elements.playlistList.innerHTML = '';
+
+    const names = playlists ? Object.keys(playlists) : [];
+    if (names.length === 0) {
+        const li = document.createElement('li');
+        li.className = 'playlist-empty';
+        li.textContent = t.NO_PLAYLISTS || 'No playlists yet';
+        elements.playlistList.appendChild(li);
+        return;
     }
+
+    names.forEach(name => {
+        const li = document.createElement('li');
+        li.dataset.playlistName = name;
+        const isLoaded = name === selected;
+        if (isLoaded) li.classList.add('loaded');
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'playlist-name';
+        nameSpan.textContent = name;
+        li.appendChild(nameSpan);
+
+        if (isLoaded) {
+            const badge = document.createElement('span');
+            badge.className = 'playlist-badge';
+            badge.textContent = t.LOADED_BADGE || 'Loaded';
+            li.appendChild(badge);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'playlist-actions';
+        const buttons = [
+            { action: 'load', symbol: '▶', title: t.LOAD_PLAYLIST || 'Load' },
+            { action: 'overwrite', symbol: '💾', title: t.OVERWRITE_PLAYLIST || 'Overwrite with current state' },
+            { action: 'rename', symbol: '✎', title: t.RENAME_PLAYLIST || 'Rename' },
+            { action: 'delete', symbol: '', title: t.DELETE_PLAYLIST || 'Delete', danger: true },
+        ];
+        buttons.forEach(({ action, symbol, title, danger }) => {
+            const btn = document.createElement('button');
+            btn.className = `playlist-action-btn${danger ? ' danger' : ''}`;
+            btn.dataset.action = action;
+            btn.title = title;
+            if (action === 'delete') {
+                const img = document.createElement('img');
+                img.src = 'assets/icons/trash.svg';
+                img.alt = title;
+                btn.appendChild(img);
+            } else {
+                btn.textContent = symbol;
+            }
+            actions.appendChild(btn);
+        });
+        li.appendChild(actions);
+
+        elements.playlistList.appendChild(li);
+    });
 }
 
 export function updatePendingState(isPending) {
@@ -152,6 +193,7 @@ export function showToast(message, type = 'info') {
 }
 
 export function initializeUI(translations, store, platform) {
+    cachedTranslations = translations || {};
     applyTranslations(translations, platform);
     if (store.romPath) {
         elements.gameDirDisplay.textContent = store.romPath;

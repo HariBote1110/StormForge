@@ -63,5 +63,8 @@
   "MISSING_MODS_DESC": "The following mods are required to import this playlist:",
   "IMPORT_SUCCESS_TITLE": "Import Successful",
   "IMPORT_SUCCESS_DESC": "Playlist '{playlistName}' has been created. Update your mod states and click 'Apply Changes'.",
-  "DROP_TO_ADD": "Drop here to add mods"
+  "DROP_TO_ADD": "Drop here to add mods",
+  "SAVE_CURRENT_AS": "Save current setup as new playlist",
+  "LOADED_BADGE": "Loaded",
+  "NO_PLAYLISTS": "No playlists yet"
 }

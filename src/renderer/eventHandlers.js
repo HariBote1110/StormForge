@@ -117,85 +117,88 @@ export function setupEventListeners(translations) {
         }
     });
 
-    elements.loadPlaylistBtn.addEventListener('click', async () => {
-        const name = elements.playlistSelect.value;
+    // プレイリスト一覧の操作はイベントデリゲーションで処理する
+    elements.playlistList.addEventListener('click', async (event) => {
+        const button = event.target.closest('.playlist-action-btn');
+        if (!button) return;
+        const li = button.closest('li');
+        const name = li?.dataset.playlistName;
         if (!name) return;
 
-        const confirmMessage = translations.LOAD_CONFIRM || "You have unsaved changes. Are you sure you want to load a playlist and discard them?";
-        if (window.hasPendingChanges && !confirm(confirmMessage)) {
-            return;
-        }
-
-        const result = await window.electronAPI.loadPlaylist(name);
-        if (result.success) {
-            showToast(result.message, 'success');
-            refreshModListUI(result.mods, translations);
-            updatePendingState(false);
-        } else {
-            showToast(`${translations.ERROR}: ${result.message}`, 'error');
-        }
-    });
-
-    elements.renamePlaylistBtn.addEventListener('click', async () => {
-        const oldName = elements.playlistSelect.value;
-        if (!oldName) return;
-
-        const newName = prompt(translations.RENAME_PROMPT || "Enter the new playlist name:", oldName);
-        if (!newName || newName === oldName) return;
-
-        const result = await window.electronAPI.renamePlaylist(oldName, newName);
-        if (result.success) {
-            showToast(result.message, 'success');
+        const refreshList = async () => {
             const { store } = await window.electronAPI.getInitialData();
-            await window.electronAPI.setLastSelectedPlaylist(newName);
-            refreshPlaylistUI(store.playlists, newName);
-        } else {
-            showToast(`${translations.ERROR}: ${result.message}`, 'error');
+            refreshPlaylistUI(store.playlists, store.selectedPlaylist);
+        };
+
+        switch (button.dataset.action) {
+            case 'load': {
+                const confirmMessage = translations.LOAD_CONFIRM || "You have unsaved changes. Are you sure you want to load a playlist and discard them?";
+                if (window.hasPendingChanges && !confirm(confirmMessage)) return;
+
+                const result = await window.electronAPI.loadPlaylist(name);
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    refreshModListUI(result.mods, translations);
+                    updatePendingState(false);
+                    await window.electronAPI.setLastSelectedPlaylist(name);
+                    await refreshList();
+                } else {
+                    showToast(`${translations.ERROR}: ${result.message}`, 'error');
+                }
+                break;
+            }
+            case 'overwrite': {
+                const confirmMessage = (translations.OVERWRITE_CONFIRM || "Are you sure you want to overwrite '{playlistName}'?").replace('{playlistName}', name);
+                if (!confirm(confirmMessage)) return;
+
+                const activeStates = {};
+                document.querySelectorAll('#mod-list li').forEach(modLi => {
+                    const modName = modLi.dataset.modName;
+                    const checkbox = modLi.querySelector('input[type="checkbox"]');
+                    activeStates[modName] = checkbox.checked;
+                });
+
+                const result = await window.electronAPI.overwritePlaylist(name, activeStates);
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    await refreshList();
+                } else {
+                    showToast(`${translations.ERROR}: ${result.message}`, 'error');
+                }
+                break;
+            }
+            case 'rename': {
+                const newName = prompt(translations.RENAME_PROMPT || "Enter the new playlist name:", name);
+                if (!newName || newName === name) return;
+
+                const result = await window.electronAPI.renamePlaylist(name, newName);
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    await window.electronAPI.setLastSelectedPlaylist(newName);
+                    await refreshList();
+                } else {
+                    showToast(`${translations.ERROR}: ${result.message}`, 'error');
+                }
+                break;
+            }
+            case 'delete': {
+                const confirmMessage = (translations.DELETE_CONFIRM || "Are you sure you want to delete '{playlistName}'?").replace('{playlistName}', name);
+                if (!confirm(confirmMessage)) return;
+
+                const result = await window.electronAPI.deletePlaylist(name);
+                if (result.success) {
+                    showToast(result.message, 'success');
+                    const wasLoaded = li.classList.contains('loaded');
+                    if (wasLoaded) {
+                        await window.electronAPI.setLastSelectedPlaylist(null);
+                    }
+                    await refreshList();
+                } else {
+                    showToast(`${translations.ERROR}: ${result.message}`, 'error');
+                }
+                break;
+            }
         }
-    });
-
-    elements.deletePlaylistBtn.addEventListener('click', async () => {
-        const name = elements.playlistSelect.value;
-        if (!name) return;
-        
-        const confirmMessage = (translations.DELETE_CONFIRM || "Are you sure you want to delete '{playlistName}'?").replace('{playlistName}', name);
-        if (!confirm(confirmMessage)) return;
-
-        const result = await window.electronAPI.deletePlaylist(name);
-        if (result.success) {
-            showToast(result.message, 'success');
-            const { store } = await window.electronAPI.getInitialData();
-            refreshPlaylistUI(store.playlists);
-            window.electronAPI.setLastSelectedPlaylist(elements.playlistSelect.value || null);
-        } else {
-            showToast(`${translations.ERROR}: ${result.message}`, 'error');
-        }
-    });
-
-    elements.overwritePlaylistBtn.addEventListener('click', async () => {
-        const name = elements.playlistSelect.value;
-        if (!name) return;
-
-        const confirmMessage = (translations.OVERWRITE_CONFIRM || "Are you sure you want to overwrite '{playlistName}'?").replace('{playlistName}', name);
-        if (!confirm(confirmMessage)) return;
-
-        const activeStates = {};
-        document.querySelectorAll('#mod-list li').forEach(li => {
-            const modName = li.dataset.modName;
-            const checkbox = li.querySelector('input[type="checkbox"]');
-            activeStates[modName] = checkbox.checked;
-        });
-
-        const result = await window.electronAPI.overwritePlaylist(name, activeStates);
-        if (result.success) {
-            showToast(result.message, 'success');
-        } else {
-            showToast(`${translations.ERROR}: ${result.message}`, 'error');
-        }
-    });
-
-    elements.playlistSelect.addEventListener('change', () => {
-        window.electronAPI.setLastSelectedPlaylist(elements.playlistSelect.value);
     });
 
     elements.applyChangesBtn.addEventListener('click', async () => {
