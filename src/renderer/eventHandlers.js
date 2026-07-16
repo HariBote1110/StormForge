@@ -1,4 +1,4 @@
-import { elements, refreshModListUI, refreshPlaylistUI, updatePendingState, addModToList } from './ui.js';
+import { elements, refreshModListUI, refreshPlaylistUI, updatePendingState, addModToList, showToast } from './ui.js';
 
 export function setupEventListeners(translations) {
     // ★ 設定ボタンの挙動変更: モーダルを開く
@@ -32,24 +32,30 @@ export function setupEventListeners(translations) {
                 // 再起動中のため何もしない（またはメッセージ表示）
             } else {
                 elements.settingsModal.style.display = 'none';
-                alert(translations.SUCCESS || "Settings saved.");
+                showToast(translations.SUCCESS || "Settings saved.", 'success');
             }
         } else {
-            alert("Failed to save settings.");
+            showToast("Failed to save settings.", 'error');
         }
     });
 
     elements.addModBtn.addEventListener('click', async () => {
-        const result = await window.electronAPI.addMod();
-        if (result.success) {
-            const existingLi = document.querySelector(`li[data-mod-name="${result.mod.name}"]`);
-            if (existingLi) {
-                elements.modList.removeChild(existingLi);
+        elements.loadingMessage.textContent = translations.PROCESSING || "Processing...";
+        elements.loadingOverlay.style.display = 'flex';
+        try {
+            const result = await window.electronAPI.addMod();
+            if (result.success) {
+                const existingLi = document.querySelector(`li[data-mod-name="${result.mod.name}"]`);
+                if (existingLi) {
+                    elements.modList.removeChild(existingLi);
+                }
+                addModToList(result.mod, translations);
+                updatePendingState(true);
+            } else {
+                showToast(`${translations.ERROR}: ${result.message}`, 'error');
             }
-            addModToList(result.mod, translations);
-            updatePendingState(true);
-        } else {
-            alert(`${translations.ERROR}: ${result.message}`);
+        } finally {
+            elements.loadingOverlay.style.display = 'none';
         }
     });
 
@@ -73,16 +79,16 @@ export function setupEventListeners(translations) {
         if (result.success) {
             elements.gameDirDisplay.textContent = result.romPath;
             elements.gameDirContainer.classList.remove('path-hidden');
-            alert(translations.SUCCESS || "Path detected successfully!");
+            showToast(translations.SUCCESS || "Path detected successfully!", 'success');
         } else {
-            alert(`${translations.ERROR}: ${result.message}`);
+            showToast(`${translations.ERROR}: ${result.message}`, 'error');
         }
     });
 
     elements.launchGameBtn.addEventListener('click', async () => {
         const result = await window.electronAPI.launchGame();
         if (!result.success) {
-            alert(`${translations.ERROR}: ${result.message}`);
+            showToast(`${translations.ERROR}: ${result.message}`, 'error');
         }
     });
 
@@ -101,13 +107,13 @@ export function setupEventListeners(translations) {
 
         const result = await window.electronAPI.savePlaylist(name, activeStates);
         if (result.success) {
-            alert(result.message);
+            showToast(result.message, 'success');
             elements.newPlaylistNameInput.value = '';
             const { store } = await window.electronAPI.getInitialData();
             refreshPlaylistUI(store.playlists, name);
             window.electronAPI.setLastSelectedPlaylist(name);
         } else {
-            alert(`${translations.ERROR}: ${result.message}`);
+            showToast(`${translations.ERROR}: ${result.message}`, 'error');
         }
     });
 
@@ -122,11 +128,11 @@ export function setupEventListeners(translations) {
 
         const result = await window.electronAPI.loadPlaylist(name);
         if (result.success) {
-            alert(result.message);
+            showToast(result.message, 'success');
             refreshModListUI(result.mods, translations);
             updatePendingState(false);
         } else {
-            alert(`${translations.ERROR}: ${result.message}`);
+            showToast(`${translations.ERROR}: ${result.message}`, 'error');
         }
     });
 
@@ -139,12 +145,12 @@ export function setupEventListeners(translations) {
 
         const result = await window.electronAPI.renamePlaylist(oldName, newName);
         if (result.success) {
-            alert(result.message);
+            showToast(result.message, 'success');
             const { store } = await window.electronAPI.getInitialData();
             await window.electronAPI.setLastSelectedPlaylist(newName);
             refreshPlaylistUI(store.playlists, newName);
         } else {
-            alert(`${translations.ERROR}: ${result.message}`);
+            showToast(`${translations.ERROR}: ${result.message}`, 'error');
         }
     });
 
@@ -157,12 +163,12 @@ export function setupEventListeners(translations) {
 
         const result = await window.electronAPI.deletePlaylist(name);
         if (result.success) {
-            alert(result.message);
+            showToast(result.message, 'success');
             const { store } = await window.electronAPI.getInitialData();
             refreshPlaylistUI(store.playlists);
             window.electronAPI.setLastSelectedPlaylist(elements.playlistSelect.value || null);
         } else {
-            alert(`${translations.ERROR}: ${result.message}`);
+            showToast(`${translations.ERROR}: ${result.message}`, 'error');
         }
     });
 
@@ -182,9 +188,9 @@ export function setupEventListeners(translations) {
 
         const result = await window.electronAPI.overwritePlaylist(name, activeStates);
         if (result.success) {
-            alert(result.message);
+            showToast(result.message, 'success');
         } else {
-            alert(`${translations.ERROR}: ${result.message}`);
+            showToast(`${translations.ERROR}: ${result.message}`, 'error');
         }
     });
 
@@ -204,7 +210,7 @@ export function setupEventListeners(translations) {
         if (result.success) {
             updatePendingState(false);
         } else {
-            alert(`${translations.ERROR}: ${result.message}`);
+            showToast(`${translations.ERROR}: ${result.message}`, 'error');
         }
     });
     
@@ -218,9 +224,9 @@ export function setupEventListeners(translations) {
                 const result = await window.electronAPI.deleteMod(modName);
                 if (result.success) {
                     li.remove();
-                    alert(result.message);
+                    showToast(result.message, 'success');
                 } else {
-                    alert(`${translations.ERROR}: ${result.message}`);
+                    showToast(`${translations.ERROR}: ${result.message}`, 'error');
                 }
             }
         }
@@ -256,7 +262,7 @@ export function setupEventListeners(translations) {
         });
 
         if (activeMods.length === 0) {
-            alert('No active mods to share.');
+            showToast('No active mods to share.', 'info');
             return;
         }
 
@@ -281,7 +287,7 @@ export function setupEventListeners(translations) {
 
     elements.copyConfigBtn.addEventListener('click', () => {
         window.electronAPI.copyToClipboard(elements.exportTextarea.value);
-        alert('Copied to clipboard!');
+        showToast('Copied to clipboard!', 'success');
     });
 
     elements.importConfigBtn.addEventListener('click', async () => {
@@ -312,16 +318,16 @@ export function setupEventListeners(translations) {
                 });
 
                 updatePendingState(true);
-                alert((translations.IMPORT_SUCCESS_DESC || "Playlist '{playlistName}' has been created...").replace('{playlistName}', playlistName));
+                showToast((translations.IMPORT_SUCCESS_DESC || "Playlist '{playlistName}' has been created...").replace('{playlistName}', playlistName), 'success');
                 elements.importModal.style.display = 'none';
             }
 
         } else if (result.missing) {
             let missingModsMessage = `${translations.MISSING_MODS_DESC || 'The following mods are required:'}\n\n`;
             missingModsMessage += result.mods.join('\n');
-            alert(`${translations.MISSING_MODS_TITLE || 'Missing Mods'}\n\n${missingModsMessage}`);
+            showToast(`${translations.MISSING_MODS_TITLE || 'Missing Mods'}: ${missingModsMessage}`, 'error');
         } else {
-            alert(`${translations.ERROR}: ${result.message}`);
+            showToast(`${translations.ERROR}: ${result.message}`, 'error');
         }
     });
 

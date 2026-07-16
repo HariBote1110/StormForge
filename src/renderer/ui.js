@@ -123,6 +123,34 @@ export function updatePendingState(isPending) {
     elements.applyChangesBtn.style.display = isPending ? 'block' : 'none';
 }
 
+/**
+ * Shows a non-blocking toast notification instead of alert(), which freezes
+ * the renderer's event loop until dismissed.
+ * @param {string} message Text to display.
+ * @param {'info'|'success'|'error'} [type='info'] Visual style of the toast.
+ */
+export function showToast(message, type = 'info') {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+
+    // 次のフレームでクラスを付与しトランジションを発火させる
+    requestAnimationFrame(() => {
+        toast.classList.add('toast-visible');
+    });
+
+    const dismiss = () => {
+        toast.classList.remove('toast-visible');
+        toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+    };
+
+    setTimeout(dismiss, 4000);
+}
+
 export function initializeUI(translations, store, platform) {
     applyTranslations(translations, platform);
     if (store.romPath) {

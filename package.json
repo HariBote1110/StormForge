@@ -1,6 +1,6 @@
 {
   "name": "stormforge",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "A mod manager for Stormworks.",
   "main": "src/main/app.js",
   "author": "haribote1110",
