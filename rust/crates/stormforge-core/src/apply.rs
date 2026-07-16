@@ -199,6 +199,29 @@ pub fn diff(current: &Manifest, desired: &DesiredState) -> Vec<Op> {
     ops
 }
 
+/// Mirror of the Electron `store.installedFiles` map: mod name -> absolute paths of
+/// the files that mod installed into the rom.
+///
+/// Compatibility note (verified against `src/main/modService.js`): the Electron v0.3.9
+/// Smart Fast Copy derives its `foldersToRestore` set by relativising each recorded
+/// path against the rom, taking the top-level folder component and matching it
+/// case-insensitively against MOD_FOLDERS. It records directory-level entries itself,
+/// but file-level absolute paths resolve to exactly the same top-level folders, so
+/// writing file-level paths here keeps the still-deployed Electron app safe when it
+/// applies after the Rust app has.
+pub fn installed_files_from_desired(
+    desired: &DesiredState,
+    rom_path: &Path,
+) -> std::collections::BTreeMap<String, Vec<PathBuf>> {
+    let mut map: std::collections::BTreeMap<String, Vec<PathBuf>> = std::collections::BTreeMap::new();
+    for (rel, src) in &desired.mod_files {
+        map.entry(src.identity.mod_name.clone())
+            .or_default()
+            .push(rel_to_path(rom_path, rel));
+    }
+    map
+}
+
 /// The manifest the rom will have once `desired` is fully applied.
 pub fn manifest_from_desired(desired: &DesiredState) -> Manifest {
     Manifest {
@@ -295,6 +318,18 @@ pub fn differential_apply(
     active_mods: &[Mod],
     manifest_path: &Path,
 ) -> Result<ApplyStats, ModError> {
+    differential_apply_recording(rom_path, vanilla_backup, active_mods, manifest_path).map(|(stats, _)| stats)
+}
+
+/// As `differential_apply`, but additionally returns the Electron-compatible
+/// installed-files map (see `installed_files_from_desired`) so the caller can mirror it
+/// into `store.installedFiles` for the still-deployed Electron app's benefit.
+pub fn differential_apply_recording(
+    rom_path: &Path,
+    vanilla_backup: &Path,
+    active_mods: &[Mod],
+    manifest_path: &Path,
+) -> Result<(ApplyStats, std::collections::BTreeMap<String, Vec<PathBuf>>), ModError> {
     if !vanilla_backup.exists() {
         return Err(ModError::BackupMissing(vanilla_backup.to_path_buf()));
     }
@@ -315,7 +350,8 @@ pub fn differential_apply(
     };
 
     write_manifest_atomic(manifest_path, &manifest_from_desired(&desired))?;
-    Ok(stats)
+    let installed_files = installed_files_from_desired(&desired, rom_path);
+    Ok((stats, installed_files))
 }
 
 #[cfg(test)]
@@ -470,6 +506,30 @@ mod tests {
         // Manifest must be healthy again afterwards.
         let manifest = read_manifest(&f.manifest_path).unwrap();
         assert!(manifest.files.contains_key("meshes/ship.mesh"));
+    }
+
+    #[test]
+    fn apply_records_electron_compatible_installed_files() {
+        let f = fixture();
+        let (stats, installed) = differential_apply_recording(
+            &f.rom,
+            &f.backup,
+            &[f.mod_a.clone(), f.mod_b.clone()],
+            &f.manifest_path,
+        )
+        .unwrap();
+        assert!(stats.full_rebuild);
+
+        // One entry per active mod, each an absolute path inside the rom whose
+        // top-level folder is a (lowercased) MOD_FOLDERS member — exactly what the
+        // Electron Smart Fast Copy derives its foldersToRestore set from.
+        assert_eq!(installed["ModA"], vec![f.rom.join("meshes").join("ship.mesh")]);
+        assert_eq!(installed["ModB"], vec![f.rom.join("data").join("extra.xml")]);
+        for paths in installed.values() {
+            for p in paths {
+                assert!(p.starts_with(&f.rom));
+            }
+        }
     }
 
     #[test]

@@ -15,7 +15,7 @@ use std::thread;
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use i18n::I18n;
-use stormforge_core::apply::{differential_apply, ApplyStats};
+use stormforge_core::apply::{differential_apply_recording, ApplyStats};
 use stormforge_core::manifest::{default_manifest_path, invalidate_manifest};
 use stormforge_core::mods::{add_mod_from_path, backup_rom, default_vanilla_backup_dir, delete_mod};
 use stormforge_core::playlists::{
@@ -165,8 +165,17 @@ fn apply_job(store_path: &std::path::Path) -> Result<String, String> {
     let started = std::time::Instant::now();
     let (store, rom_path, backup_path, manifest_path) = rom_context(store_path)?;
     let active_mods: Vec<_> = store.mods.iter().filter(|m| m.active).cloned().collect();
-    let stats =
-        differential_apply(&rom_path, &backup_path, &active_mods, &manifest_path).map_err(|e| e.to_string())?;
+    let (stats, installed_files) =
+        differential_apply_recording(&rom_path, &backup_path, &active_mods, &manifest_path)
+            .map_err(|e| e.to_string())?;
+
+    // Mirror installedFiles back into the shared store.json: the Electron app's Smart
+    // Fast Copy relies on it to know which rom folders to restore, and would corrupt
+    // the rom state on its next apply if we left it stale.
+    let mut store = read_store(store_path);
+    store.installed_files = installed_files;
+    write_store(store_path, &store).map_err(|e| e.to_string())?;
+
     Ok(format_stats(&stats, started.elapsed()))
 }
 
@@ -188,6 +197,23 @@ fn main() {
     apply_language(&window, &tr);
     refresh(&window, &store_path);
     window.set_busy(false);
+
+    // Guide the user up front instead of letting each operation fail with the same
+    // root cause: no game directory, or a directory whose rom cannot be found.
+    match &initial_store.game_directory {
+        None => window.set_status_text(SharedString::from(
+            "Game directory is not set — use Auto Detect in Settings, or set it in the Electron app.",
+        )),
+        Some(dir) => {
+            let rom = get_rom_path(dir);
+            if !rom.is_dir() {
+                window.set_status_text(SharedString::from(format!(
+                    "ROM directory not found at {} — check the game directory setting.",
+                    rom.display()
+                )));
+            }
+        }
+    }
 
     // --- mod list -------------------------------------------------------------
     {
