@@ -94,6 +94,24 @@ pub fn add_mod_from_path(archive_path: &Path, mods_dir: &Path, mod_name: &str) -
     })
 }
 
+/// Remove a mod entirely: delete its extracted directory (if present) and drop its
+/// entry from the store's mod list. Mirrors the Electron `delete-mod` IPC handler.
+pub fn delete_mod(store: &mut crate::store::Store, mod_name: &str) -> Result<(), ModError> {
+    let Some(position) = store.mods.iter().position(|m| m.name == mod_name) else {
+        return Err(ModError::Io(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("mod '{mod_name}' not found in store"),
+        )));
+    };
+
+    let mod_path = store.mods[position].path.clone();
+    if mod_path.exists() {
+        fs::remove_dir_all(&mod_path)?;
+    }
+    store.mods.remove(position);
+    Ok(())
+}
+
 /// Install a single mod into the rom: copies each present `MOD_FOLDERS` subdirectory
 /// into the lowercased destination folder under `rom_path`, returning every destination
 /// file path so it can be recorded in `store.installedFiles`. Mirrors `installMod()`.
@@ -316,6 +334,29 @@ mod tests {
         assert!(mod_entry.path.join("Data").join("thing.xml").exists());
         // The single root folder ("MyMod/") must be unwrapped, not preserved as nesting.
         assert!(!mod_entry.path.join("MyMod").exists());
+    }
+
+    #[test]
+    fn delete_mod_removes_directory_and_store_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mod_dir = tmp.path().join("Doomed");
+        write_file(&mod_dir.join("Data").join("x.xml"), "<x/>");
+
+        let mut store = crate::store::Store::default();
+        store.mods.push(Mod {
+            name: "Doomed".into(),
+            path: mod_dir.clone(),
+            author: "A".into(),
+            version: "1".into(),
+            active: false,
+        });
+
+        delete_mod(&mut store, "Doomed").unwrap();
+        assert!(store.mods.is_empty());
+        assert!(!mod_dir.exists());
+
+        // Deleting again reports not-found.
+        assert!(delete_mod(&mut store, "Doomed").is_err());
     }
 
     #[test]

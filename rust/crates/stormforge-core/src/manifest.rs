@@ -68,6 +68,18 @@ pub fn write_manifest_atomic(path: &Path, manifest: &Manifest) -> io::Result<()>
     Ok(())
 }
 
+/// Invalidate the manifest by deleting it. MUST be called whenever the vanilla backup
+/// is replaced (its file listing is a baked-in assumption of every recorded diff) or
+/// when the user requests a repair — the next apply then takes the full-rebuild path
+/// and writes a fresh manifest. A manifest that is already absent is fine.
+pub fn invalidate_manifest(path: &Path) -> io::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
 /// The default manifest location for the Rust app: platform data dir +
 /// `StormForge/rom_manifest.json` (alongside the vanilla backup, deliberately separate
 /// from the Electron store.json).
@@ -107,6 +119,19 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let result = read_manifest(&tmp.path().join("nope.json"));
         assert!(matches!(result, Err(ManifestError::NotFound)));
+    }
+
+    #[test]
+    fn invalidate_removes_manifest_and_tolerates_absence() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("manifest.json");
+        write_manifest_atomic(&path, &sample_manifest()).unwrap();
+
+        invalidate_manifest(&path).unwrap();
+        assert!(matches!(read_manifest(&path), Err(ManifestError::NotFound)));
+
+        // Idempotent: invalidating a missing manifest is not an error.
+        invalidate_manifest(&path).unwrap();
     }
 
     #[test]

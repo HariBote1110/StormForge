@@ -1,4 +1,4 @@
-import { Button, CheckBox, ListView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { Button, CheckBox, ListView, LineEdit, ComboBox, VerticalBox, HorizontalBox, GroupBox } from "std-widgets.slint";
 
 export struct ModItem {
     name: string,
@@ -7,58 +7,176 @@ export struct ModItem {
     active: bool,
 }
 
+export struct PlaylistItem {
+    name: string,
+    loaded: bool,
+}
+
 export component MainWindow inherits Window {
     title: "StormForge (native)";
-    width: 720px;
-    height: 480px;
+    preferred-width: 1080px;
+    preferred-height: 680px;
 
     in property <[ModItem]> mods;
-    in property <[string]> playlists;
+    in property <[PlaylistItem]> playlists;
     in property <string> status-text: "";
     in property <bool> busy: false;
+    in-out property <string> share-text;
+    in-out property <string> import-text;
+    in property <int> language-index: 0;
+
+    // Translated labels, set from Rust (see the i18n module).
+    in property <string> l-mods: "Installed Mods";
+    in property <string> l-add-mod: "Add Mod";
+    in property <string> l-apply: "Apply Changes";
+    in property <string> l-delete: "Delete";
+    in property <string> l-playlists: "Playlists";
+    in property <string> l-save-as: "Save as New Playlist";
+    in property <string> l-new-playlist-name: "New playlist name";
+    in property <string> l-load: "Load";
+    in property <string> l-overwrite: "Overwrite";
+    in property <string> l-rename: "Rename";
+    in property <string> l-loaded: "Loaded";
+    in property <string> l-share: "Share Configuration";
+    in property <string> l-export: "Export";
+    in property <string> l-import: "Import";
+    in property <string> l-copy: "Copy";
+    in property <string> l-paste-here: "Paste configuration here";
+    in property <string> l-settings: "Settings";
+    in property <string> l-language: "Language";
+    in property <string> l-auto-detect: "Auto Detect";
+    in property <string> l-update-backup: "Update Vanilla ROM Backup";
+    in property <string> l-repair: "Repair (full rebuild)";
 
     callback toggle-mod(int, bool);
+    callback delete-mod(int);
     callback apply-changes();
     callback add-mod();
+    callback save-playlist(string);
+    callback load-playlist(string);
+    callback overwrite-playlist(string);
+    callback rename-playlist(string, string); // old name, new name (from the name field)
+    callback delete-playlist(string);
+    callback export-share();
+    callback copy-share();
+    callback import-share(string);
+    callback set-language(int);
+    callback auto-detect();
+    callback backup-rom();
+    callback repair();
+
+    property <string> playlist-name-input;
 
     HorizontalBox {
-        // Left panel: mod list.
+        // ------------------------------------------------- left: mod list
         VerticalBox {
-            width: 60%;
-            Text { text: "Mods"; font-weight: 700; }
+            horizontal-stretch: 3;
+            Text { text: root.l-mods; font-weight: 700; }
             ListView {
                 for item[i] in mods: HorizontalBox {
-                    height: 32px;
+                    height: 34px;
                     CheckBox {
                         checked: item.active;
+                        enabled: !busy;
                         toggled => { toggle-mod(i, self.checked); }
                     }
-                    Text { text: item.name; width: 40%; }
-                    Text { text: item.author; width: 30%; }
-                    Text { text: item.version; width: 20%; }
+                    Text { text: item.name; vertical-alignment: center; horizontal-stretch: 3; overflow: elide; }
+                    Text { text: item.author; vertical-alignment: center; horizontal-stretch: 2; overflow: elide; }
+                    Text { text: item.version; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                    Button {
+                        text: root.l-delete;
+                        enabled: !busy;
+                        clicked => { delete-mod(i); }
+                    }
                 }
             }
             HorizontalBox {
                 Button {
-                    text: "Add Mod";
+                    text: root.l-add-mod;
                     enabled: !busy;
                     clicked => { add-mod(); }
                 }
                 Button {
-                    text: busy ? "Applying..." : "Apply Changes";
+                    text: root.l-apply;
+                    primary: true;
                     enabled: !busy;
                     clicked => { apply-changes(); }
                 }
             }
-            Text { text: status-text; }
+            Text { text: status-text; wrap: word-wrap; }
         }
 
-        // Right panel: playlist stub.
+        // ------------------------------------------------- right: playlists / share / settings
         VerticalBox {
-            width: 40%;
-            Text { text: "Playlists"; font-weight: 700; }
-            ListView {
-                for name in playlists: Text { text: name; height: 24px; }
+            horizontal-stretch: 2;
+
+            GroupBox {
+                title: root.l-playlists;
+                VerticalBox {
+                    ListView {
+                        min-height: 150px;
+                        for item in playlists: HorizontalBox {
+                            height: 34px;
+                            Text { text: item.name; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                            if item.loaded: Rectangle {
+                                background: #2c7a3f;
+                                border-radius: 4px;
+                                width: badge.width + 12px;
+                                badge := Text { text: root.l-loaded; color: white; vertical-alignment: center; horizontal-alignment: center; }
+                            }
+                            Button { text: root.l-load; enabled: !busy; clicked => { load-playlist(item.name); } }
+                            Button { text: root.l-overwrite; enabled: !busy; clicked => { overwrite-playlist(item.name); } }
+                            Button { text: root.l-rename; enabled: !busy && playlist-name-input != ""; clicked => { rename-playlist(item.name, playlist-name-input); } }
+                            Button { text: root.l-delete; enabled: !busy; clicked => { delete-playlist(item.name); } }
+                        }
+                    }
+                    HorizontalBox {
+                        LineEdit {
+                            placeholder-text: root.l-new-playlist-name;
+                            text <=> playlist-name-input;
+                            horizontal-stretch: 1;
+                        }
+                        Button {
+                            text: root.l-save-as;
+                            enabled: !busy && playlist-name-input != "";
+                            clicked => { save-playlist(playlist-name-input); }
+                        }
+                    }
+                }
+            }
+
+            GroupBox {
+                title: root.l-share;
+                VerticalBox {
+                    HorizontalBox {
+                        LineEdit { text <=> share-text; read-only: true; horizontal-stretch: 1; }
+                        Button { text: root.l-export; clicked => { export-share(); } }
+                        Button { text: root.l-copy; enabled: share-text != ""; clicked => { copy-share(); } }
+                    }
+                    HorizontalBox {
+                        LineEdit { placeholder-text: root.l-paste-here; text <=> import-text; horizontal-stretch: 1; }
+                        Button { text: root.l-import; enabled: !busy && import-text != ""; clicked => { import-share(import-text); } }
+                    }
+                }
+            }
+
+            GroupBox {
+                title: root.l-settings;
+                VerticalBox {
+                    HorizontalBox {
+                        Text { text: root.l-language; vertical-alignment: center; }
+                        ComboBox {
+                            model: ["English", "日本語"];
+                            current-index: language-index;
+                            selected => { set-language(self.current-index); }
+                        }
+                    }
+                    HorizontalBox {
+                        Button { text: root.l-auto-detect; enabled: !busy; clicked => { auto-detect(); } }
+                        Button { text: root.l-update-backup; enabled: !busy; clicked => { backup-rom(); } }
+                        Button { text: root.l-repair; enabled: !busy; clicked => { repair(); } }
+                    }
+                }
             }
         }
     }

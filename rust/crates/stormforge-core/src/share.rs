@@ -73,6 +73,46 @@ pub fn import_share_string(share_string: &str) -> Result<SharePlaylist, ShareStr
     Ok(playlist)
 }
 
+/// Errors from importing a share string into the store as a playlist.
+#[derive(Debug, Error)]
+pub enum ImportError {
+    #[error(transparent)]
+    Share(#[from] ShareStringError),
+    /// One or more required mods are not installed; contains their names.
+    #[error("missing mods: {0:?}")]
+    MissingMods(Vec<String>),
+}
+
+/// Import a share string as a new playlist named `playlist_name`, mirroring the
+/// Electron import flow: reject with the list of missing mod names when any required
+/// mod is not installed; otherwise save a playlist activating exactly the required mods
+/// (all other installed mods inactive) and return its states.
+pub fn import_share_as_playlist(
+    store: &mut crate::store::Store,
+    share_string: &str,
+    playlist_name: &str,
+) -> Result<std::collections::BTreeMap<String, bool>, ImportError> {
+    let playlist = import_share_string(share_string)?;
+
+    let required: Vec<&str> = playlist.mods.iter().map(|m| m.name.as_str()).collect();
+    let missing: Vec<String> = required
+        .iter()
+        .filter(|name| !store.mods.iter().any(|m| m.name == **name))
+        .map(|name| name.to_string())
+        .collect();
+    if !missing.is_empty() {
+        return Err(ImportError::MissingMods(missing));
+    }
+
+    let states: std::collections::BTreeMap<String, bool> = store
+        .mods
+        .iter()
+        .map(|m| (m.name.clone(), required.contains(&m.name.as_str())))
+        .collect();
+    store.playlists.insert(playlist_name.to_string(), states.clone());
+    Ok(states)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,6 +131,54 @@ mod tests {
 
         let decoded = import_share_string(&share_string).unwrap();
         assert_eq!(decoded, playlist);
+    }
+
+    fn store_with_mods(names: &[&str]) -> crate::store::Store {
+        let mut store = crate::store::Store::default();
+        for name in names {
+            store.mods.push(crate::store::Mod {
+                name: name.to_string(),
+                path: std::path::PathBuf::from(format!("/mods/{name}")),
+                author: "A".into(),
+                version: "1.0".into(),
+                active: false,
+            });
+        }
+        store
+    }
+
+    #[test]
+    fn import_creates_playlist_activating_required_mods() {
+        let mut store = store_with_mods(&["ModA", "ModB", "ModC"]);
+        let share = generate_share_string(&SharePlaylist {
+            mods: vec![ShareMod { name: "ModA".into(), version: "1.0".into() }],
+        })
+        .unwrap();
+
+        let states = import_share_as_playlist(&mut store, &share, "Imported-2026-07-16").unwrap();
+        assert_eq!(states["ModA"], true);
+        assert_eq!(states["ModB"], false);
+        assert_eq!(states["ModC"], false);
+        assert_eq!(store.playlists["Imported-2026-07-16"], states);
+    }
+
+    #[test]
+    fn import_reports_missing_mods_and_creates_nothing() {
+        let mut store = store_with_mods(&["ModA"]);
+        let share = generate_share_string(&SharePlaylist {
+            mods: vec![
+                ShareMod { name: "ModA".into(), version: "1.0".into() },
+                ShareMod { name: "Absent".into(), version: "2.0".into() },
+            ],
+        })
+        .unwrap();
+
+        let result = import_share_as_playlist(&mut store, &share, "X");
+        match result {
+            Err(ImportError::MissingMods(missing)) => assert_eq!(missing, vec!["Absent".to_string()]),
+            other => panic!("expected MissingMods, got {other:?}"),
+        }
+        assert!(store.playlists.is_empty());
     }
 
     #[test]

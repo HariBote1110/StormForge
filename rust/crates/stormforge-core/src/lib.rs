@@ -8,6 +8,7 @@ pub mod fsops;
 pub mod manifest;
 pub mod metadata;
 pub mod mods;
+pub mod playlists;
 pub mod rom;
 pub mod share;
 pub mod steam;
