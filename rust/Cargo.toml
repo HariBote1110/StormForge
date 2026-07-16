@@ -4,3 +4,10 @@ members = [
     "crates/stormforge-core",
     "apps/native",
 ]
+
+# Distribution builds: thin LTO + single codegen unit for smaller, faster binaries;
+# symbols stripped since crash symbolication is not needed for end-user bundles.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
