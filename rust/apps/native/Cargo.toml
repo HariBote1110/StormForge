@@ -8,6 +8,9 @@ description = "Slint-based native GUI MVP for StormForge."
 stormforge-core = { path = "../../crates/stormforge-core" }
 slint = "1"
 rfd = "0.15"
+serde_json = "1"
+arboard = "3"
+chrono = "0.4"
 
 [build-dependencies]
 slint-build = "1"
