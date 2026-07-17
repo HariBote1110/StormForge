@@ -12,6 +12,7 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::thread;
 
+use slint::winit_030::{winit, EventResult, WinitWindowAccessor};
 use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 
 use i18n::I18n;
@@ -85,6 +86,8 @@ fn apply_language(window: &MainWindow, tr: &I18n) {
     window.set_l_auto_detect(tr.t("AUTO_DETECT").into());
     window.set_l_update_backup(tr.t("UPDATE_VANILLA_ROM").into());
     window.set_l_repair(tr.t("REPAIR_FULL_REBUILD").into());
+    window.set_l_launch_game(tr.t("LAUNCH_GAME").into());
+    window.set_l_drop_here(tr.t("DROP_HERE").into());
 }
 
 /// Format apply statistics for the status line, with thousands separators for the
@@ -120,6 +123,7 @@ fn run_worker(
     window: &MainWindow,
     store_path: PathBuf,
     busy_text: &str,
+    clear_pending_on_success: bool,
     job: impl FnOnce() -> Result<String, String> + Send + 'static,
 ) {
     window.set_busy(true);
@@ -138,7 +142,12 @@ fn run_worker(
             if let Some(window) = window_weak.upgrade() {
                 window.set_busy(false);
                 match result {
-                    Ok(msg) => window.set_status_text(SharedString::from(msg)),
+                    Ok(msg) => {
+                        window.set_status_text(SharedString::from(msg));
+                        if clear_pending_on_success {
+                            window.set_pending(false);
+                        }
+                    }
                     Err(err) => window.set_status_text(SharedString::from(format!("Failed: {err}"))),
                 }
                 refresh(&window, &store_path);
@@ -179,6 +188,79 @@ fn apply_job(store_path: &std::path::Path) -> Result<String, String> {
     Ok(format_stats(&stats, started.elapsed()))
 }
 
+/// Extract a mod archive and register (or replace) it in the store. Shared by the Add
+/// Mod button and file drag-and-drop. Returns the status-line message.
+fn add_mod_file(store_path: &std::path::Path, path: &std::path::Path) -> Result<String, String> {
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if extension != "slp" && extension != "zip" {
+        return Err(format!("'{}' is not a .slp/.zip mod package.", path.display()));
+    }
+
+    let mod_name =
+        path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "mod".to_string());
+    let mods_dir = store_path.parent().map(|p| p.join("mods")).unwrap_or_else(|| PathBuf::from("mods"));
+
+    let new_mod = add_mod_from_path(path, &mods_dir, &mod_name).map_err(|e| e.to_string())?;
+    let mut store = read_store(store_path);
+    if let Some(existing) = store.mods.iter_mut().find(|m| m.name == new_mod.name) {
+        *existing = new_mod;
+    } else {
+        store.mods.push(new_mod);
+    }
+    write_store(store_path, &store).map_err(|e| e.to_string())?;
+    Ok(format!("Added mod '{mod_name}'."))
+}
+
+/// Open the game via the Steam protocol, like the Electron `launch-game` handler.
+fn launch_game() -> Result<(), String> {
+    let url = "steam://run/573090";
+    let mut command = if cfg!(target_os = "macos") {
+        let mut c = std::process::Command::new("/usr/bin/open");
+        c.arg(url);
+        c
+    } else if cfg!(target_os = "windows") {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", "", url]);
+        c
+    } else {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(url);
+        c
+    };
+    command.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Where the Rust app remembers its window geometry (deliberately outside the shared
+/// Electron store.json — this is per-app UI state, not shared data).
+fn window_state_path() -> Option<PathBuf> {
+    Some(dirs::data_dir()?.join("StormForge").join("window_state.json"))
+}
+
+fn restore_window_state(window: &MainWindow) {
+    let Some(path) = window_state_path() else { return };
+    let Ok(contents) = std::fs::read_to_string(&path) else { return };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&contents) else { return };
+    let (Some(w), Some(h)) = (v["width"].as_u64(), v["height"].as_u64()) else { return };
+    window.window().set_size(slint::PhysicalSize::new(w as u32, h as u32));
+    if let (Some(x), Some(y)) = (v["x"].as_i64(), v["y"].as_i64()) {
+        window.window().set_position(slint::PhysicalPosition::new(x as i32, y as i32));
+    }
+}
+
+fn save_window_state(window: &MainWindow) {
+    let Some(path) = window_state_path() else { return };
+    let position = window.window().position();
+    let size = window.window().size();
+    let v = serde_json::json!({
+        "x": position.x, "y": position.y,
+        "width": size.width, "height": size.height,
+    });
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&path, v.to_string());
+}
+
 fn confirm(title: &str, message: &str) -> bool {
     rfd::MessageDialog::new()
         .set_title(title)
@@ -197,6 +279,53 @@ fn main() {
     apply_language(&window, &tr);
     refresh(&window, &store_path);
     window.set_busy(false);
+    restore_window_state(&window);
+
+    // Persist window geometry when the user closes the window.
+    {
+        let window_weak = window.as_weak();
+        window.window().on_close_requested(move || {
+            if let Some(window) = window_weak.upgrade() {
+                save_window_state(&window);
+            }
+            slint::CloseRequestResponse::HideWindow
+        });
+    }
+
+    // OS file drag-and-drop: Slint has no stable API for this yet, so hook the raw
+    // winit window events (unstable-winit-030 feature). Hovering shows an overlay;
+    // dropped .slp/.zip files are added sequentially, one status line each.
+    {
+        let store_path = store_path.clone();
+        let window_weak = window.as_weak();
+        window.window().on_winit_window_event(move |_, event| {
+            let Some(window) = window_weak.upgrade() else { return EventResult::Propagate };
+            match event {
+                winit::event::WindowEvent::HoveredFile(_) => window.set_drop_hint(true),
+                winit::event::WindowEvent::HoveredFileCancelled => window.set_drop_hint(false),
+                winit::event::WindowEvent::DroppedFile(path) => {
+                    window.set_drop_hint(false);
+                    match add_mod_file(&store_path, path) {
+                        Ok(msg) => window.set_status_text(SharedString::from(msg)),
+                        Err(err) => window.set_status_text(SharedString::from(format!("Drop failed: {err}"))),
+                    }
+                    refresh(&window, &store_path);
+                }
+                _ => {}
+            }
+            EventResult::Propagate
+        });
+    }
+
+    {
+        let window_weak = window.as_weak();
+        window.on_launch_game(move || {
+            let Some(window) = window_weak.upgrade() else { return };
+            if let Err(err) = launch_game() {
+                window.set_status_text(SharedString::from(format!("Failed to launch game: {err}")));
+            }
+        });
+    }
 
     // Guide the user up front instead of letting each operation fail with the same
     // root cause: no game directory, or a directory whose rom cannot be found.
@@ -226,6 +355,7 @@ fn main() {
             }
             let _ = write_store(&store_path, &store);
             if let Some(window) = window_weak.upgrade() {
+                window.set_pending(true);
                 refresh(&window, &store_path);
             }
         });
@@ -265,22 +395,8 @@ fn main() {
             };
             let Some(window) = window_weak.upgrade() else { return };
 
-            let mod_name =
-                path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "mod".to_string());
-            let mods_dir =
-                store_path.parent().map(|p| p.join("mods")).unwrap_or_else(|| PathBuf::from("mods"));
-
-            match add_mod_from_path(&path, &mods_dir, &mod_name) {
-                Ok(new_mod) => {
-                    let mut store = read_store(&store_path);
-                    if let Some(existing) = store.mods.iter_mut().find(|m| m.name == new_mod.name) {
-                        *existing = new_mod;
-                    } else {
-                        store.mods.push(new_mod);
-                    }
-                    let _ = write_store(&store_path, &store);
-                    window.set_status_text(SharedString::from("Mod added."));
-                }
+            match add_mod_file(&store_path, &path) {
+                Ok(msg) => window.set_status_text(SharedString::from(msg)),
                 Err(err) => window.set_status_text(SharedString::from(format!("Failed to add mod: {err}"))),
             }
             refresh(&window, &store_path);
@@ -294,7 +410,7 @@ fn main() {
         window.on_apply_changes(move || {
             let Some(window) = window_weak.upgrade() else { return };
             let job_store_path = store_path.clone();
-            run_worker(&window, store_path.clone(), "Applying changes...", move || apply_job(&job_store_path));
+            run_worker(&window, store_path.clone(), "Applying changes...", true, move || apply_job(&job_store_path));
         });
     }
 
@@ -329,7 +445,7 @@ fn main() {
                     refresh(&window, &store_path);
                     // Loading a playlist immediately applies it, like the Electron app.
                     let job_store_path = store_path.clone();
-                    run_worker(&window, store_path.clone(), "Applying playlist...", move || {
+                    run_worker(&window, store_path.clone(), "Applying playlist...", true, move || {
                         apply_job(&job_store_path)
                     });
                 }
@@ -446,6 +562,7 @@ fn main() {
                     }
                     let _ = write_store(&store_path, &store);
                     window.set_import_text(SharedString::from(""));
+                    window.set_pending(true);
                     window.set_status_text(SharedString::from(format!("Playlist '{playlist_name}' created.")));
                 }
                 Err(ImportError::MissingMods(missing)) => {
@@ -477,7 +594,7 @@ fn main() {
         window.on_auto_detect(move || {
             let Some(window) = window_weak.upgrade() else { return };
             let job_store_path = store_path.clone();
-            run_worker(&window, store_path.clone(), "Detecting Stormworks installation...", move || {
+            run_worker(&window, store_path.clone(), "Detecting Stormworks installation...", false, move || {
                 let detected = detect_game_path().ok_or("Could not detect Stormworks installation.")?;
                 let mut store = read_store(&job_store_path);
                 store.game_directory = Some(detected.clone());
@@ -503,7 +620,7 @@ fn main() {
         window.on_backup_rom(move || {
             let Some(window) = window_weak.upgrade() else { return };
             let job_store_path = store_path.clone();
-            run_worker(&window, store_path.clone(), "Backing up vanilla ROM...", move || {
+            run_worker(&window, store_path.clone(), "Backing up vanilla ROM...", false, move || {
                 let (_store, rom_path, backup_path, manifest_path) = rom_context(&job_store_path)?;
                 if !rom_path.is_dir() {
                     return Err(format!("ROM directory not found: {}", rom_path.display()));
@@ -522,7 +639,7 @@ fn main() {
         window.on_repair(move || {
             let Some(window) = window_weak.upgrade() else { return };
             let job_store_path = store_path.clone();
-            run_worker(&window, store_path.clone(), "Repairing (full rebuild)...", move || {
+            run_worker(&window, store_path.clone(), "Repairing (full rebuild)...", true, move || {
                 // Dropping the manifest forces the next apply onto the full-rebuild path.
                 let manifest_path = default_manifest_path().ok_or("Could not resolve manifest path.")?;
                 invalidate_manifest(&manifest_path).map_err(|e| e.to_string())?;

@@ -21,6 +21,8 @@ export component MainWindow inherits Window {
     in property <[PlaylistItem]> playlists;
     in property <string> status-text: "";
     in property <bool> busy: false;
+    in property <bool> drop-hint: false;
+    in-out property <bool> pending: false;
     in-out property <string> share-text;
     in-out property <string> import-text;
     in property <int> language-index: 0;
@@ -47,11 +49,14 @@ export component MainWindow inherits Window {
     in property <string> l-auto-detect: "Auto Detect";
     in property <string> l-update-backup: "Update Vanilla ROM Backup";
     in property <string> l-repair: "Repair (full rebuild)";
+    in property <string> l-launch-game: "Launch Game";
+    in property <string> l-drop-here: "Drop .slp / .zip files here to add mods";
 
     callback toggle-mod(int, bool);
     callback delete-mod(int);
     callback apply-changes();
     callback add-mod();
+    callback launch-game();
     callback save-playlist(string);
     callback load-playlist(string);
     callback overwrite-playlist(string);
@@ -103,8 +108,12 @@ export component MainWindow inherits Window {
                 Button {
                     text: root.l-apply;
                     primary: true;
-                    enabled: !busy;
+                    enabled: !busy && pending;
                     clicked => { apply-changes(); }
+                }
+                Button {
+                    text: root.l-launch-game;
+                    clicked => { launch-game(); }
                 }
             }
             Text { text: status-text; wrap: word-wrap; }
@@ -142,6 +151,8 @@ export component MainWindow inherits Window {
                             placeholder-text: root.l-new-playlist-name;
                             text <=> playlist-name-input;
                             horizontal-stretch: 1;
+                            // Enter saves straight away, matching the button.
+                            accepted => { if (self.text != "" && !busy) { save-playlist(self.text); } }
                         }
                         Button {
                             text: root.l-save-as;
@@ -184,6 +195,26 @@ export component MainWindow inherits Window {
                         Button { text: root.l-repair; enabled: !busy; clicked => { repair(); } }
                     }
                 }
+            }
+        }
+    }
+
+    // Full-window overlay shown while files hover over the window.
+    if drop-hint: Rectangle {
+        background: #1a1a1add;
+        Rectangle {
+            width: 60%;
+            height: 120px;
+            border-radius: 12px;
+            border-width: 2px;
+            border-color: #2c7a3f;
+            background: #202a22;
+            Text {
+                text: root.l-drop-here;
+                color: white;
+                font-size: 18px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
             }
         }
     }
