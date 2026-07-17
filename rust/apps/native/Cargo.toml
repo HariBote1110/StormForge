@@ -17,9 +17,13 @@ slint = { version = "1", default-features = false, features = [
     "software-renderer-systemfonts",
     "accessibility",
     "image-default-formats",
+    # Exposes the winit window-event hook used for OS file drag-and-drop
+    # (WindowEvent::DroppedFile/HoveredFile) — no stable Slint API covers this yet.
+    "unstable-winit-030",
 ] }
 rfd = "0.15"
 serde_json = "1"
+dirs = "5"
 arboard = "3"
 chrono = "0.4"
 

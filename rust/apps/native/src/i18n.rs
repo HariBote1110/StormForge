@@ -26,6 +26,7 @@ fn extras(lang: &str) -> HashMap<String, String> {
             ("EXPORT", "エクスポート"),
             ("COPY", "コピー"),
             ("REPAIR_FULL_REBUILD", "修復（フル再構築）"),
+            ("DROP_HERE", ".slp / .zip をここにドロップして MOD を追加"),
         ]
     } else {
         &[
@@ -33,6 +34,7 @@ fn extras(lang: &str) -> HashMap<String, String> {
             ("EXPORT", "Export"),
             ("COPY", "Copy"),
             ("REPAIR_FULL_REBUILD", "Repair (full rebuild)"),
+            ("DROP_HERE", "Drop .slp / .zip files here to add mods"),
         ]
     };
     pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
